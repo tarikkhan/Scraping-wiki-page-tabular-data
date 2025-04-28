@@ -1,5 +1,5 @@
 use scraper::{Html, Selector};
-//use serde::{Deserialize, Serialize};
+
 use std::{fs::File, io::Write};
 use wiki_scrap::{DataList, SingleCompanyDetails};
 
