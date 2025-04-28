@@ -1,0 +1,107 @@
+use scraper::{Html, Selector};
+use serde::{Deserialize, Serialize};
+use std::{fs::File, io, io::Write};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let url =
+        "https://en.wikipedia.org/wiki/List_of_largest_companies_in_the_United_States_by_revenue";
+    let result = list_search(url).await?;
+
+    let serialized = serde_json::to_string(&result).unwrap();
+    let mut json_file = File::create("company_list.json")?;
+    json_file.write_all(serialized.as_bytes())?;
+
+    let csv_file = File::create("company_list.csv")?;
+
+    let mut wtr = csv::Writer::from_writer(csv_file);
+
+    for company in result {
+        wtr.serialize(company)?;
+        wtr.flush()?;
+    }
+
+    Ok(())
+}
+
+
+
+async fn list_search(url: &str) -> Result<Vec<CompanyDetails>, Box<dyn std::error::Error>> {
+    let mut list_organized = Vec::new();
+
+    let res = reqwest::get(url).await?;
+
+    if !res.status().is_success() {
+        println!("{}", res.status());
+        let error_msg = format!("Request failed with status code: {}", res.status());
+        return Err(error_msg.into());
+    }
+
+    let res = res.text().await?;
+    let document = Html::parse_document(&res);
+
+    let selector = Selector::parse("table.wikitable.sortable tbody tr")?;
+    let td_selector = Selector::parse("td")?;
+
+    let mut tr_list = Vec::new();
+
+    let trs = document.select(&selector);
+    for tr in trs {
+        let mut td_list = Vec::new();
+        let tds = tr.select(&td_selector);
+        for td in tds {
+            td_list.push(td.text().collect::<String>().trim().to_owned());
+        }
+        tr_list.push(td_list);
+    }
+
+    for item in tr_list {
+        if item.len() == 7 {
+            let list_item = CompanyDetails::new(
+                item[0].clone(),
+                item[1].clone(),
+                item[2].clone(),
+                item[3].clone(),
+                item[4].clone(),
+                item[5].clone(),
+                item[6].clone(),
+            );
+            list_organized.push(list_item);
+        }
+    }
+
+    Ok(list_organized)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CompanyDetails {
+    rank: String,
+    name: String,
+    industry: String,
+    revenue_usd_millions: String,
+    revenue_growth: String,
+    employees: String,
+    headquarters: String,
+}
+
+impl CompanyDetails {
+    pub fn new(
+        rank: String,
+        name: String,
+        industry: String,
+        revenue_usd_millions: String,
+        revenue_growth: String,
+        employees: String,
+        headquarters: String,
+    ) -> Self {
+        CompanyDetails {
+            rank,
+            name,
+            industry,
+            revenue_usd_millions,
+            revenue_growth,
+            employees,
+            headquarters,
+        }
+    }
+}
